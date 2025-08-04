@@ -47,18 +47,4 @@ chmod +x kubectl
 sudo mv kubectl /usr/local/bin/
 kubectl version --client
 
-sleep 10
-
-#Cluster_Creation
-
-eksctl create cluster \
---name mycluster \
---region ap-south-1 \
---zones ap-south-1a,ap-south-1b,ap-south-1c \
---version 1.30 \
---nodegroup-name my-node-group \
---nodes 3 \
---node-type t2.micro \
---nodes-min 2 \
---nodes-max 3 \
---managed
+sleep 5
