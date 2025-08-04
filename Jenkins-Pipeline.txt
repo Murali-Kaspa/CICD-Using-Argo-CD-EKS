@@ -1,0 +1,91 @@
+#Hello, This is Jenkins Pipeline Script.
+
+pipeline {
+    agent any
+
+    tools {
+        maven 'maven3'
+    }
+
+    stages {
+        stage('Cleaning WorkSpace') {
+            steps {
+                echo "Cleaning the workspace..."
+                cleanWs()
+            }
+        }
+
+        stage('Cloning Git Repo') {
+            steps {
+                echo "Cloning the Git Repo"
+                git branch: 'main', url: 'https://github.com/Murali-Kaspa/AWS-JENKNS-Docker-EKS-MVN.git'
+            }
+        }
+
+        stage('Sonar') {
+            steps {
+                echo "Scanning-Image"
+                sh '''
+                    mvn sonar:sonar \
+                    -Dsonar.host.url=http://13.201.33.208:9000 \
+                    -Dsonar.login=sqa_3f5879a299ac17df49f56cde067f2a8fae25a179
+                '''
+            }
+        }
+
+        stage('Building Artifacts') {
+            steps {
+                echo 'mvn clean package'
+            }
+        }
+
+        stage('Docker image') {
+            steps {
+                sh '''
+                    docker --version
+                    docker build -t myimage:${BUILD_NUMBER} .
+                '''
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'docker-creds', 
+                        usernameVariable: 'DOCKER_USER', 
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker tag myimage:${BUILD_NUMBER} $DOCKER_USER/myimage:${BUILD_NUMBER}
+                        docker push $DOCKER_USER/myimage:${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+
+        stage('Update Deployment File') {
+            environment {
+                GIT_REPO_NAME = "AWS-JENKNS-Docker-EKS-MVN"
+                GIT_USER_NAME = "Murali-Kaspa"
+            }
+            steps {
+                echo 'Update Deployment File'
+                withCredentials([
+                    string(credentialsId: 'GitHub_Creds', variable: 'githubtoken')
+                ]) {
+                    sh '''
+                        git config user.email "murali.kaspa26@gmail.com"
+                        git config user.name "Murali-Kaspa"
+                        sed -i "s#muralikaspa1998/myimage:.*#muralikaspa1998/myimage:${BUILD_NUMBER}#g" deploymentfiles/deployment.yml
+                        git add .
+                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                        git push https://${githubtoken}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+                    '''
+                }
+            }
+        }
+    }
+}
