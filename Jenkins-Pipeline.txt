@@ -1,84 +1,104 @@
-#Hello, This is Jenkins Pipeline Script.
-
 pipeline {
     agent any
 
     tools {
-        maven 'maven3'
+        maven 'maven3' // Use the Maven installation configured in Jenkins
+    }
+
+    environment {
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
-        stage('Cleaning WorkSpace') {
+        stage('Clean Workspace') {
             steps {
-                echo "Cleaning the workspace..."
                 cleanWs()
             }
         }
 
-        stage('Cloning Git Repo') {
+        stage('Clone Git Repo') {
             steps {
-                echo "Cloning the Git Repo"
-                git branch: 'main', url: 'https://github.com/Murali-Kaspa/AWS-JENKNS-Docker-EKS-MVN.git'
+                git branch: 'main',
+                    credentialsId: 'git-creds',
+                    url: 'https://github.com/Murali-Kaspa/CICD-Using-Argo-CD-EKS.git'
             }
         }
 
-        stage('Sonar') {
+        stage('SonarQube Code Quality Analysis') {
             steps {
-                echo "Scanning-Image"
-                sh '''
-                    mvn sonar:sonar \
-                    -Dsonar.host.url=http://13.201.33.208:9000 \
-                    -Dsonar.login=sqa_3f5879a299ac17df49f56cde067f2a8fae25a179
-                '''
-            }
-        }
-
-        stage('Building Artifacts') {
-            steps {
-                echo 'mvn clean package'
-            }
-        }
-
-        stage('Docker image') {
-            steps {
-                sh '''
-                    docker --version
-                    docker build -t myimage:${BUILD_NUMBER} .
-                '''
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'docker-creds', 
-                        usernameVariable: 'DOCKER_USER', 
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
+                withSonarQubeEnv('sonar-server') {
                     sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker tag myimage:${BUILD_NUMBER} $DOCKER_USER/myimage:${BUILD_NUMBER}
-                        docker push $DOCKER_USER/myimage:${BUILD_NUMBER}
+                        mvn clean verify sonar:sonar \
+                        -Dsonar.projectKey=sonartestapp \
+                        -Dsonar.projectName=sonartestapp
                     '''
+                }
+            }
+        }
+
+        stage('Build Artifacts') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    docker build -t muralikaspa1998/myimage:$IMAGE_TAG .
+                    docker images
+                '''
+            }
+        }
+
+        stage('Install Trivy') {
+            steps {
+                sh '''
+                    sudo yum remove trivy -y
+                    rm -rf *.zip
+                    wget https://github.com/aquasecurity/trivy/releases/download/v0.64.1/trivy_0.64.1_Linux-64bit.rpm
+                    sudo rpm -ivh trivy_0.64.1_Linux-64bit.rpm
+                    trivy --version
+                '''
+            }
+        }
+
+        stage('Scan Docker Image with Trivy') {
+            steps {
+                sh 'sudo trivy image muralikaspa1998/myimage:$IMAGE_TAG'
+            }
+        }
+
+        stage('Trivy Gate') {
+            steps {
+                sh 'trivy image --exit-code 1 --severity CRITICAL,HIGH muralikaspa1998/myimage:$IMAGE_TAG'
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-creds') {
+                        sh 'docker push muralikaspa1998/myimage:$IMAGE_TAG'
+                    }
                 }
             }
         }
 
         stage('Update Deployment File') {
             environment {
-                GIT_REPO_NAME = "AWS-JENKNS-Docker-EKS-MVN"
+                GIT_REPO_NAME = "CICD-Using-Argo-CD-EKS"
                 GIT_USER_NAME = "Murali-Kaspa"
             }
             steps {
                 echo 'Update Deployment File'
                 withCredentials([
-                    string(credentialsId: 'GitHub_Creds', variable: 'githubtoken')
+                    string(credentialsId: 'git-creds', variable: 'githubtoken')
                 ]) {
                     sh '''
                         git config user.email "murali.kaspa26@gmail.com"
                         git config user.name "Murali-Kaspa"
+                        rm -rf *.rpm.* #To Remove the trivy files in GitHub
                         sed -i "s#muralikaspa1998/myimage:.*#muralikaspa1998/myimage:${BUILD_NUMBER}#g" deploymentfiles/deployment.yml
                         git add .
                         git commit -m "Update deployment image to version ${BUILD_NUMBER}"
@@ -86,6 +106,15 @@ pipeline {
                     '''
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo "Build #${BUILD_NUMBER} completed successfully."
+        }
+        failure {
+            echo " Build #${BUILD_NUMBER} failed!"
         }
     }
 }
