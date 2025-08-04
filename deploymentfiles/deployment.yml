@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: my-app
-        image: muralikaspa1998/myimage
+        image: muralikaspa1998/myimage:${BUILD_NUMBER}
         ports:
         - containerPort: 8080
 
