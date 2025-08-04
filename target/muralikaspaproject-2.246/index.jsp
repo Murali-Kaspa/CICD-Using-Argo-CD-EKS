@@ -44,14 +44,7 @@
     <h1>CI/CD Pipeline</h1>
 </header>
 
-<section>
-    <h2>📦 Repository</h2>
-    <p>Source code available at:
-        <a href="https://github.com/Murali-Kaspa/CICD-Using-Argo-CD-EKS.git" target="_blank">
-            github.com/Murali-Kaspa/CICD-Using-Argo-CD-EKS
-        </a>
-    </p>
-</section>
+
 
 <section>
     <h2>🚀 Deployment Flow</h2>
